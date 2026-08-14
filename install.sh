@@ -110,6 +110,7 @@ SOURCE_ROOTFS="$SCRIPT_DIR/rootfs"
 [[ -x "$SOURCE_ROOTFS/usr/sbin/rabbitmq-server" ]] || { echo "rootfs is missing from $SOURCE_ROOTFS" >&2; exit 1; }
 
 cleanup_mounts() {
+  umount "$PREFIX/rootfs/proc" 2>/dev/null || true
   umount "$PREFIX/rootfs/var/log/rabbitmq" 2>/dev/null || true
   umount "$PREFIX/rootfs/etc/rabbitmq" 2>/dev/null || true
   umount "$PREFIX/rootfs/var/lib/rabbitmq" 2>/dev/null || true
@@ -135,6 +136,7 @@ wait_for_rabbitmq_ready() {
 }
 
 if systemctl is-active --quiet "$SERVICE_NAME"; then systemctl stop "$SERVICE_NAME"; fi
+cleanup_mounts
 mkdir -p "$PREFIX" "$(dirname "$CREDENTIALS")"
 chmod 0750 "$(dirname "$CREDENTIALS")"
 
@@ -143,6 +145,11 @@ rm -rf "$new_rootfs"
 cp -a "$SOURCE_ROOTFS" "$new_rootfs"
 if [[ -d "$PREFIX/rootfs" ]]; then rm -rf "$PREFIX/rootfs"; fi
 mv "$new_rootfs" "$PREFIX/rootfs"
+cat > "$PREFIX/rootfs/etc/hosts" <<'EOF'
+127.0.0.1 localhost
+::1 localhost
+EOF
+chmod 0644 "$PREFIX/rootfs/etc/hosts"
 install -D -m 0755 "$SCRIPT_DIR/bin/chroot-rabbitmq-run" "$PREFIX/bin/chroot-rabbitmq-run"
 
 RABBITMQ_UID="$(chroot "$PREFIX/rootfs" id -u rabbitmq)"
@@ -221,14 +228,14 @@ chmod 0644 "$CONF_DIR/enabled_plugins"
 if [[ "$needs_bootstrap" == true ]]; then
   install -d -o "$RABBITMQ_UID" -g "$RABBITMQ_GID" -m 0750 \
     "$PREFIX/rootfs/var/lib/rabbitmq" "$PREFIX/rootfs/etc/rabbitmq" "$PREFIX/rootfs/var/log/rabbitmq"
+  install -d -m 0755 "$PREFIX/rootfs/proc"
   mount --bind "$DATA_DIR" "$PREFIX/rootfs/var/lib/rabbitmq"
   mount --bind "$CONF_DIR" "$PREFIX/rootfs/etc/rabbitmq"
   mount --bind "$LOG_DIR" "$PREFIX/rootfs/var/log/rabbitmq"
+  mount -t proc proc "$PREFIX/rootfs/proc"
   trap cleanup_mounts EXIT
   chroot "$PREFIX/rootfs" env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C /usr/sbin/rabbitmq-server -detached
   wait_for_rabbitmq_ready
-  chroot "$PREFIX/rootfs" env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C \
-    /usr/sbin/rabbitmq-plugins enable rabbitmq_management
   rabbitmqctl_chroot add_user "$RABBITMQ_USER" "$password"
   rabbitmqctl_chroot set_permissions -p / "$RABBITMQ_USER" ".*" ".*" ".*"
   rabbitmqctl_chroot set_user_tags "$RABBITMQ_USER" administrator

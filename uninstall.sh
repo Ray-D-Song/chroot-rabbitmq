@@ -36,6 +36,10 @@ done
 systemctl disable --now "$SERVICE_NAME" 2>/dev/null || true
 rm -f "/etc/systemd/system/$SERVICE_NAME.service"
 systemctl daemon-reload
+umount "$PREFIX/rootfs/proc" 2>/dev/null || true
+umount "$PREFIX/rootfs/var/log/rabbitmq" 2>/dev/null || true
+umount "$PREFIX/rootfs/etc/rabbitmq" 2>/dev/null || true
+umount "$PREFIX/rootfs/var/lib/rabbitmq" 2>/dev/null || true
 rm -rf "$PREFIX"
 if [[ "$PURGE_DATA" == true ]]; then
   rm -rf "$DATA_DIR" "$CONF_DIR" "$LOG_DIR"

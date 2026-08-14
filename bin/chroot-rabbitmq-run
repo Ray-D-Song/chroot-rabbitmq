@@ -27,9 +27,10 @@ done
 [[ -f "$CONF_DIR/rabbitmq.conf" ]] || { echo "missing configuration file: $CONF_DIR/rabbitmq.conf" >&2; exit 1; }
 [[ -f "$CONF_DIR/rabbitmq-env.conf" ]] || { echo "missing environment file: $CONF_DIR/rabbitmq-env.conf" >&2; exit 1; }
 
-mkdir -p "$ROOTFS/var/lib/rabbitmq" "$ROOTFS/etc/rabbitmq" "$ROOTFS/var/log/rabbitmq"
+mkdir -p "$ROOTFS/var/lib/rabbitmq" "$ROOTFS/etc/rabbitmq" "$ROOTFS/var/log/rabbitmq" "$ROOTFS/proc"
 mount --bind "$DATA_DIR" "$ROOTFS/var/lib/rabbitmq"
 mount --bind "$CONF_DIR" "$ROOTFS/etc/rabbitmq"
 mount --bind "$LOG_DIR" "$ROOTFS/var/log/rabbitmq"
+mount -t proc proc "$ROOTFS/proc"
 
 exec chroot "$ROOTFS" env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C /usr/sbin/rabbitmq-server

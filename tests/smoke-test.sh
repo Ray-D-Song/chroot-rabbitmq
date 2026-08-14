@@ -58,14 +58,16 @@ queue_smoke_test() {
 
 mount_rabbitmq_paths() {
   local prefix="$1" data_dir="$2" conf_dir="$3" log_dir="$4"
-  mkdir -p "$prefix/rootfs/var/lib/rabbitmq" "$prefix/rootfs/etc/rabbitmq" "$prefix/rootfs/var/log/rabbitmq"
+  mkdir -p "$prefix/rootfs/var/lib/rabbitmq" "$prefix/rootfs/etc/rabbitmq" "$prefix/rootfs/var/log/rabbitmq" "$prefix/rootfs/proc"
   mount --bind "$data_dir" "$prefix/rootfs/var/lib/rabbitmq"
   mount --bind "$conf_dir" "$prefix/rootfs/etc/rabbitmq"
   mount --bind "$log_dir" "$prefix/rootfs/var/log/rabbitmq"
+  mount -t proc proc "$prefix/rootfs/proc"
 }
 
 umount_rabbitmq_paths() {
   local prefix="$1"
+  umount "$prefix/rootfs/proc" 2>/dev/null || true
   umount "$prefix/rootfs/var/log/rabbitmq" 2>/dev/null || true
   umount "$prefix/rootfs/etc/rabbitmq" 2>/dev/null || true
   umount "$prefix/rootfs/var/lib/rabbitmq" 2>/dev/null || true
