@@ -213,6 +213,9 @@ HOME=/var/lib/rabbitmq
 EOF
 chown "$RABBITMQ_UID:$RABBITMQ_GID" "$CONF_DIR/rabbitmq-env.conf"
 chmod 0600 "$CONF_DIR/rabbitmq-env.conf"
+printf '%s\n' '[rabbitmq_management].' > "$CONF_DIR/enabled_plugins"
+chown "$RABBITMQ_UID:$RABBITMQ_GID" "$CONF_DIR/enabled_plugins"
+chmod 0644 "$CONF_DIR/enabled_plugins"
 
 if [[ "$needs_bootstrap" == true ]]; then
   install -d -o "$RABBITMQ_UID" -g "$RABBITMQ_GID" -m 0750 \
