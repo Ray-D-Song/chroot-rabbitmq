@@ -37,6 +37,6 @@ mount --bind "$DATA_DIR" "$ROOTFS/var/lib/rabbitmq"
 mount --bind "$CONF_DIR" "$ROOTFS/etc/rabbitmq"
 mount --bind "$LOG_DIR" "$ROOTFS/var/log/rabbitmq"
 
-export LANG=C LC_ALL=C
+export LANG=C LC_ALL=C HOME=/var/lib/rabbitmq
 
-exec chroot --userspec="$RUN_UID:$RUN_GID" "$ROOTFS" /usr/sbin/rabbitmq-server
+exec chroot --userspec="$RUN_UID:$RUN_GID" "$ROOTFS" env HOME=/var/lib/rabbitmq /usr/sbin/rabbitmq-server

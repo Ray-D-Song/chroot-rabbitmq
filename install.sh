@@ -134,7 +134,8 @@ cleanup_mounts() {
 }
 
 rabbitmqctl_chroot() {
-  chroot --userspec="$RUN_UID:$RUN_GID" "$PREFIX/rootfs" /usr/sbin/rabbitmqctl -n "$NODENAME" "$@"
+  chroot --userspec="$RUN_UID:$RUN_GID" "$PREFIX/rootfs" \
+    env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C /usr/sbin/rabbitmqctl -n "$NODENAME" "$@"
 }
 
 wait_for_rabbitmq_ping() {
@@ -218,6 +219,7 @@ EOF
 cat > "$CONF_DIR/rabbitmq-env.conf" <<EOF
 NODENAME=$NODENAME
 MNESIA_BASE=/var/lib/rabbitmq/mnesia
+HOME=/var/lib/rabbitmq
 EOF
 chown "$RUN_UID:$RUN_GID" "$CONF_DIR/rabbitmq-env.conf"
 chmod 0600 "$CONF_DIR/rabbitmq-env.conf"
@@ -229,8 +231,8 @@ if [[ "$needs_bootstrap" == true ]]; then
   mount --bind "$CONF_DIR" "$PREFIX/rootfs/etc/rabbitmq"
   mount --bind "$LOG_DIR" "$PREFIX/rootfs/var/log/rabbitmq"
   trap cleanup_mounts EXIT
-  export LANG=C LC_ALL=C
-  chroot --userspec="$RUN_UID:$RUN_GID" "$PREFIX/rootfs" /usr/sbin/rabbitmq-server -detached
+  chroot --userspec="$RUN_UID:$RUN_GID" "$PREFIX/rootfs" \
+    env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C /usr/sbin/rabbitmq-server -detached
   wait_for_rabbitmq_ping
   rabbitmqctl_chroot add_user "$RABBITMQ_USER" "$password"
   rabbitmqctl_chroot set_permissions -p / "$RABBITMQ_USER" ".*" ".*" ".*"

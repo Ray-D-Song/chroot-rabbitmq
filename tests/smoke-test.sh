@@ -56,7 +56,8 @@ rabbitmqctl_exec() {
   local prefix="$1" data_dir="$2" conf_dir="$3" log_dir="$4"
   shift 4
   mount_rabbitmq_paths "$prefix" "$data_dir" "$conf_dir" "$log_dir"
-  chroot "$prefix/rootfs" /usr/sbin/rabbitmqctl -n "$NODENAME" "$@"
+  chroot "$prefix/rootfs" env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C \
+    /usr/sbin/rabbitmqctl -n "$NODENAME" "$@"
   umount_rabbitmq_paths "$prefix"
 }
 
@@ -64,7 +65,8 @@ wait_for_rabbitmq() {
   local prefix="$1" data_dir="$2" conf_dir="$3" log_dir="$4"
   for _ in $(seq 1 60); do
     if mount_rabbitmq_paths "$prefix" "$data_dir" "$conf_dir" "$log_dir" \
-      && chroot "$prefix/rootfs" /usr/sbin/rabbitmq-diagnostics -q ping -n "$NODENAME" >/dev/null 2>&1; then
+      && chroot "$prefix/rootfs" env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C \
+        /usr/sbin/rabbitmq-diagnostics -q ping -n "$NODENAME" >/dev/null 2>&1; then
       umount_rabbitmq_paths "$prefix"
       return 0
     fi
