@@ -124,8 +124,9 @@ wait_for_rabbitmq_ready() {
   local i
   for i in $(seq 1 60); do
     if rabbitmqctl_chroot ping >/dev/null 2>&1; then
-      rabbitmqctl_chroot await_startup --timeout 60
-      return 0
+      if rabbitmqctl_chroot await_startup --timeout 1 >/dev/null 2>&1; then
+        return 0
+      fi
     fi
     sleep 1
   done

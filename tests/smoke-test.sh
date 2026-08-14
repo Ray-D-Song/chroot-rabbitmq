@@ -82,19 +82,22 @@ rabbitmqctl_exec() {
 }
 
 wait_for_rabbitmq() {
-  local prefix="$1" data_dir="$2" conf_dir="$3" log_dir="$4" i rc=1
+  local prefix="$1" data_dir="$2" conf_dir="$3" log_dir="$4" i
   mount_rabbitmq_paths "$prefix" "$data_dir" "$conf_dir" "$log_dir"
   for i in $(seq 1 60); do
     if chroot "$prefix/rootfs" env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C \
          /usr/sbin/rabbitmqctl -n "$NODENAME" ping >/dev/null 2>&1; then
-      chroot "$prefix/rootfs" env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C \
-        /usr/sbin/rabbitmqctl -n "$NODENAME" await_startup --timeout 60 && rc=0
-      break
+      if chroot "$prefix/rootfs" env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C \
+           /usr/sbin/rabbitmqctl -n "$NODENAME" await_startup --timeout 1 >/dev/null 2>&1; then
+        umount_rabbitmq_paths "$prefix"
+        return 0
+      fi
     fi
     sleep 1
   done
   umount_rabbitmq_paths "$prefix"
-  [[ "$rc" -eq 0 ]] || { echo "RabbitMQ did not become ready on ports $PORT/$MGMT_PORT" >&2; return 1; }
+  echo "RabbitMQ did not become ready on ports $PORT/$MGMT_PORT" >&2
+  return 1
 }
 
 wait_for_rabbitmq "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR"
