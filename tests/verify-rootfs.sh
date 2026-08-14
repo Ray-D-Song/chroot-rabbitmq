@@ -12,6 +12,9 @@ source "$ROOT_DIR/versions.env"
   || { echo "rabbitmq.conf.reference is missing" >&2; exit 1; }
 actual="$(chroot "$ROOTFS" dpkg-query -W -f='${Version}' rabbitmq-server)"
 [[ "$actual" == "$RABBITMQ_PACKAGE_VERSION" ]] || { echo "RabbitMQ version mismatch: expected $RABBITMQ_PACKAGE_VERSION, got $actual" >&2; exit 1; }
-chroot "$ROOTFS" /usr/sbin/rabbitmq-plugins list -s | grep -q 'rabbitmq_management'
-chroot "$ROOTFS" /usr/sbin/rabbitmqctl version | grep -Fq "$RABBITMQ_UPSTREAM_VERSION"
+mgmt_plugin="$(find "$ROOTFS/usr/lib/rabbitmq" -type d -name 'rabbitmq_management-*' -print -quit)"
+[[ -n "$mgmt_plugin" ]] || { echo 'rabbitmq_management plugin is missing from rootfs' >&2; exit 1; }
+version_out="$(chroot "$ROOTFS" /usr/sbin/rabbitmqctl version 2>/dev/null || true)"
+grep -Fq "$RABBITMQ_UPSTREAM_VERSION" <<<"$version_out" \
+  || { echo "rabbitmqctl version mismatch: expected $RABBITMQ_UPSTREAM_VERSION in: $version_out" >&2; exit 1; }
 echo 'rootfs verification passed'

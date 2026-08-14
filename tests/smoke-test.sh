@@ -76,14 +76,18 @@ wait_for_rabbitmq() {
 }
 
 wait_for_rabbitmq "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR"
-rabbitmqctl_exec "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR" authenticate_user "$RABBITMQ_USER" "$RABBITMQ_PASSWORD" | grep -Fx 'Success'
+auth_out="$(rabbitmqctl_exec "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR" \
+  authenticate_user "$RABBITMQ_USER" "$RABBITMQ_PASSWORD")"
+grep -Fx 'Success' <<<"$auth_out" || { echo "authenticate_user failed: $auth_out" >&2; exit 1; }
 rabbitmqctl_exec "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR" declare queue name=ci_smoke durable=true
 rabbitmqctl_exec "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR" publish routing_key=ci_smoke payload=ok
-rabbitmqctl_exec "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR" get_queue name=ci_smoke | grep -F 'ok'
+queue_out="$(rabbitmqctl_exec "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR" get_queue name=ci_smoke)"
+grep -F 'ok' <<<"$queue_out" || { echo "get_queue missing payload: $queue_out" >&2; exit 1; }
 
 systemctl restart "$SERVICE"
 wait_for_rabbitmq "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR"
-rabbitmqctl_exec "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR" get_queue name=ci_smoke | grep -F 'ok'
+queue_out="$(rabbitmqctl_exec "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR" get_queue name=ci_smoke)"
+grep -F 'ok' <<<"$queue_out" || { echo "get_queue after restart missing payload: $queue_out" >&2; exit 1; }
 
 "$PACKAGE_DIR/uninstall.sh" --prefix "$PREFIX" --data-dir "$DATA_DIR" --conf-dir "$CONF_DIR" \
   --log-dir "$LOG_DIR" --service-name "$SERVICE" --credentials-file "$CREDENTIALS"
