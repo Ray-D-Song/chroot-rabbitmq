@@ -66,8 +66,9 @@ elif [[ -f "$ROOTFS/usr/share/rabbitmq/rabbitmq.conf.example" ]]; then
   install -D -m 0644 "$ROOTFS/usr/share/rabbitmq/rabbitmq.conf.example" \
     "$ROOTFS/usr/share/rabbitmq/rabbitmq.conf.reference"
 else
+  install -d -m 0755 "$ROOTFS/usr/share/rabbitmq"
   curl -fsSL "https://raw.githubusercontent.com/rabbitmq/rabbitmq-server/v${RABBITMQ_UPSTREAM_VERSION}/deps/rabbit/docs/rabbitmq.conf.example" \
-    > "$ROOTFS/usr/share/rabbitmq/rabbitmq.conf.reference"
+    -o "$ROOTFS/usr/share/rabbitmq/rabbitmq.conf.reference"
   chmod 0644 "$ROOTFS/usr/share/rabbitmq/rabbitmq.conf.reference"
 fi
 [[ -f "$ROOTFS/usr/share/rabbitmq/rabbitmq.conf.reference" ]] \
