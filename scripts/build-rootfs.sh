@@ -65,6 +65,12 @@ elif [[ -f "$ROOTFS/usr/share/doc/rabbitmq-server/examples/rabbitmq.conf.example
 elif [[ -f "$ROOTFS/usr/share/rabbitmq/rabbitmq.conf.example" ]]; then
   install -D -m 0644 "$ROOTFS/usr/share/rabbitmq/rabbitmq.conf.example" \
     "$ROOTFS/usr/share/rabbitmq/rabbitmq.conf.reference"
+else
+  curl -fsSL "https://raw.githubusercontent.com/rabbitmq/rabbitmq-server/v${RABBITMQ_UPSTREAM_VERSION}/deps/rabbit/docs/rabbitmq.conf.example" \
+    > "$ROOTFS/usr/share/rabbitmq/rabbitmq.conf.reference"
+  chmod 0644 "$ROOTFS/usr/share/rabbitmq/rabbitmq.conf.reference"
 fi
+[[ -f "$ROOTFS/usr/share/rabbitmq/rabbitmq.conf.reference" ]] \
+  || { echo 'failed to install rabbitmq.conf.reference' >&2; exit 1; }
 install -d -m 0755 "$ROOTFS/etc/rabbitmq" "$ROOTFS/var/lib/rabbitmq" "$ROOTFS/var/log/rabbitmq"
 echo "rootfs ready: $ROOTFS"
