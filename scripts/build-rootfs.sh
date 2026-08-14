@@ -59,6 +59,12 @@ RABBITMQ_UPSTREAM_VERSION=$RABBITMQ_UPSTREAM_VERSION
 EOF
 if [[ -f "$ROOTFS/etc/rabbitmq/rabbitmq.conf" ]]; then
   install -D -m 0644 "$ROOTFS/etc/rabbitmq/rabbitmq.conf" "$ROOTFS/usr/share/rabbitmq/rabbitmq.conf.reference"
+elif [[ -f "$ROOTFS/usr/share/doc/rabbitmq-server/examples/rabbitmq.conf.example" ]]; then
+  install -D -m 0644 "$ROOTFS/usr/share/doc/rabbitmq-server/examples/rabbitmq.conf.example" \
+    "$ROOTFS/usr/share/rabbitmq/rabbitmq.conf.reference"
+elif [[ -f "$ROOTFS/usr/share/rabbitmq/rabbitmq.conf.example" ]]; then
+  install -D -m 0644 "$ROOTFS/usr/share/rabbitmq/rabbitmq.conf.example" \
+    "$ROOTFS/usr/share/rabbitmq/rabbitmq.conf.reference"
 fi
 install -d -m 0755 "$ROOTFS/etc/rabbitmq" "$ROOTFS/var/lib/rabbitmq" "$ROOTFS/var/log/rabbitmq"
 echo "rootfs ready: $ROOTFS"
