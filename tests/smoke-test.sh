@@ -130,8 +130,9 @@ systemctl is-active --quiet "$CUSTOM_SERVICE"
 source "$CUSTOM_CREDENTIALS"
 [[ "$RABBITMQ_PASSWORD" == "$CUSTOM_PASSWORD" ]] || { echo 'custom password was not stored in credentials' >&2; exit 1; }
 wait_for_rabbitmq "$CUSTOM_PREFIX" "$CUSTOM_DATA_DIR" "$CUSTOM_CONF_DIR" "$CUSTOM_LOG_DIR"
-rabbitmqctl_exec "$CUSTOM_PREFIX" "$CUSTOM_DATA_DIR" "$CUSTOM_CONF_DIR" "$CUSTOM_LOG_DIR" \
-  authenticate_user "$RABBITMQ_USER" "$RABBITMQ_PASSWORD" | grep -Fx 'Success'
+auth_out="$(rabbitmqctl_exec "$CUSTOM_PREFIX" "$CUSTOM_DATA_DIR" "$CUSTOM_CONF_DIR" "$CUSTOM_LOG_DIR" \
+  authenticate_user "$RABBITMQ_USER" "$RABBITMQ_PASSWORD")"
+grep -Fx 'Success' <<<"$auth_out" || { echo "custom password auth failed: $auth_out" >&2; exit 1; }
 
 systemctl stop "$CUSTOM_SERVICE"
 reinstall_output="$(CHROOT_RABBITMQ_PASSWORD="$OTHER_PASSWORD" "$PACKAGE_DIR/install.sh" \
@@ -144,8 +145,9 @@ systemctl is-active --quiet "$CUSTOM_SERVICE"
 source "$CUSTOM_CREDENTIALS"
 [[ "$RABBITMQ_PASSWORD" == "$CUSTOM_PASSWORD" ]] || { echo 'reinstall changed the stored password' >&2; exit 1; }
 wait_for_rabbitmq "$CUSTOM_PREFIX" "$CUSTOM_DATA_DIR" "$CUSTOM_CONF_DIR" "$CUSTOM_LOG_DIR"
-rabbitmqctl_exec "$CUSTOM_PREFIX" "$CUSTOM_DATA_DIR" "$CUSTOM_CONF_DIR" "$CUSTOM_LOG_DIR" \
-  authenticate_user "$RABBITMQ_USER" "$RABBITMQ_PASSWORD" | grep -Fx 'Success'
+auth_out="$(rabbitmqctl_exec "$CUSTOM_PREFIX" "$CUSTOM_DATA_DIR" "$CUSTOM_CONF_DIR" "$CUSTOM_LOG_DIR" \
+  authenticate_user "$RABBITMQ_USER" "$RABBITMQ_PASSWORD")"
+grep -Fx 'Success' <<<"$auth_out" || { echo "reinstall auth failed: $auth_out" >&2; exit 1; }
 
 custom_cleanup
 trap - EXIT
