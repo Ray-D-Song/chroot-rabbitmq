@@ -37,6 +37,25 @@ systemctl is-active --quiet "$SERVICE"
 
 source "$CREDENTIALS"
 
+mgmt_api() {
+  curl -sf -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" "$@"
+}
+
+queue_smoke_test() {
+  local mgmt_base="http://127.0.0.1:${RABBITMQ_MGMT_PORT}/api"
+  mgmt_api -X PUT "${mgmt_base}/queues/%2F/ci_smoke" \
+    -H 'content-type: application/json' \
+    -d '{"durable":true,"auto_delete":false,"arguments":{}}'
+  mgmt_api -X POST "${mgmt_base}/exchanges/%2F/amq.default/publish" \
+    -H 'content-type: application/json' \
+    -d '{"properties":{},"routing_key":"ci_smoke","payload":"ok","payload_encoding":"string"}'
+  local payload
+  payload="$(mgmt_api -X POST "${mgmt_base}/queues/%2F/ci_smoke/get" \
+    -H 'content-type: application/json' \
+    -d '{"count":1,"ackmode":"ack_requeue_false","encoding":"auto"}')"
+  grep -F 'ok' <<<"$payload" || { echo "queue get missing payload: $payload" >&2; exit 1; }
+}
+
 mount_rabbitmq_paths() {
   local prefix="$1" data_dir="$2" conf_dir="$3" log_dir="$4"
   mkdir -p "$prefix/rootfs/var/lib/rabbitmq" "$prefix/rootfs/etc/rabbitmq" "$prefix/rootfs/var/log/rabbitmq"
@@ -81,15 +100,11 @@ wait_for_rabbitmq "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR"
 auth_out="$(rabbitmqctl_exec "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR" \
   authenticate_user "$RABBITMQ_USER" "$RABBITMQ_PASSWORD")"
 grep -Fx 'Success' <<<"$auth_out" || { echo "authenticate_user failed: $auth_out" >&2; exit 1; }
-rabbitmqctl_exec "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR" declare queue name=ci_smoke durable=true
-rabbitmqctl_exec "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR" publish routing_key=ci_smoke payload=ok
-queue_out="$(rabbitmqctl_exec "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR" get_queue name=ci_smoke)"
-grep -F 'ok' <<<"$queue_out" || { echo "get_queue missing payload: $queue_out" >&2; exit 1; }
+queue_smoke_test
 
 systemctl restart "$SERVICE"
 wait_for_rabbitmq "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR"
-queue_out="$(rabbitmqctl_exec "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR" get_queue name=ci_smoke)"
-grep -F 'ok' <<<"$queue_out" || { echo "get_queue after restart missing payload: $queue_out" >&2; exit 1; }
+queue_smoke_test
 
 "$PACKAGE_DIR/uninstall.sh" --prefix "$PREFIX" --data-dir "$DATA_DIR" --conf-dir "$CONF_DIR" \
   --log-dir "$LOG_DIR" --service-name "$SERVICE" --credentials-file "$CREDENTIALS"
