@@ -1,6 +1,6 @@
 # chroot-rabbitmq
 
-离线 RabbitMQ 4 发行包，使用 Debian 12 AMD64 chroot 运行环境，供没有外网或宿主发行版不固定的 Linux 服务器使用。
+离线 RabbitMQ 4.2.0 发行包，使用 Debian 12 AMD64 chroot 运行环境，供没有外网或宿主发行版不固定的 Linux 服务器使用。发行包内置并默认启用 `rabbitmq_delayed_message_exchange` 4.2.0。
 
 ## 构建与发布
 
@@ -36,6 +36,10 @@ Management 控制台（需先放开 bind 或使用本机访问）：
 source /etc/chroot-rabbitmq/credentials
 echo "http://127.0.0.1:${RABBITMQ_MGMT_PORT}/"
 ```
+
+## 延迟消息
+
+安装时会默认启用 `rabbitmq_delayed_message_exchange`，应用可声明 `x-delayed-message` 类型交换机，并在发布消息时设置毫秒级 `x-delay` header。该插件适合秒至小时级的延迟投递，依赖 Mnesia；禁用插件会丢失尚未投递的延迟消息。插件与 RabbitMQ 4.2.x 配套，不可升级到 RabbitMQ 4.3.x 后继续使用。
 
 ## 修改配置
 

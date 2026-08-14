@@ -20,7 +20,7 @@ cp "$ROOT_DIR/systemd/chroot-rabbitmq.service.in" "$STAGE/systemd/"
 cp "$ROOT_DIR/README.md" "$STAGE/"
 chmod 0755 "$STAGE"/*.sh "$STAGE/bin/chroot-rabbitmq-run"
 cat > "$STAGE/manifest.json" <<EOF
-{"bundle_version":"$VERSION","architecture":"amd64","rootfs":"debian-$DEBIAN_SUITE","rabbitmq_package_version":"$RABBITMQ_PACKAGE_VERSION","rabbitmq_upstream_version":"$RABBITMQ_UPSTREAM_VERSION"}
+{"bundle_version":"$VERSION","architecture":"amd64","rootfs":"debian-$DEBIAN_SUITE","rabbitmq_package_version":"$RABBITMQ_PACKAGE_VERSION","rabbitmq_upstream_version":"$RABBITMQ_UPSTREAM_VERSION","delayed_plugin_version":"$DELAYED_PLUGIN_VERSION","delayed_plugin_file":"$DELAYED_PLUGIN_FILE","delayed_plugin_sha256":"$DELAYED_PLUGIN_SHA256"}
 EOF
 mkdir -p "$DIST_DIR"
 tar --numeric-owner -C "$BUILD_DIR" -czf "$DIST_DIR/$NAME.tar.gz" "$NAME"

@@ -5,10 +5,18 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "$ROOT_DIR/versions.env"
 BUILD_DIR="${BUILD_DIR:-$ROOT_DIR/build}"
 ROOTFS="$BUILD_DIR/rootfs"
+BUILD_SUCCEEDED=false
+
+cleanup_failed_build() {
+  if [[ "$BUILD_SUCCEEDED" != true ]]; then
+    rm -rf "$ROOTFS"
+  fi
+}
 
 [[ "$(uname -m)" == "x86_64" ]] || { echo 'only amd64 hosts are supported' >&2; exit 1; }
 [[ $EUID -eq 0 ]] || { echo 'run build-rootfs.sh with sudo' >&2; exit 1; }
 command -v debootstrap >/dev/null || { echo 'debootstrap is required' >&2; exit 1; }
+trap cleanup_failed_build EXIT
 
 rm -rf "$ROOTFS"
 mkdir -p "$ROOTFS"
@@ -53,9 +61,22 @@ chroot "$ROOTFS" /bin/bash -ec '
 
 actual="$(chroot "$ROOTFS" dpkg-query -W -f='${Version}' rabbitmq-server)"
 [[ "$actual" == "$RABBITMQ_PACKAGE_VERSION" ]] || { echo "RabbitMQ version mismatch: expected $RABBITMQ_PACKAGE_VERSION, got $actual" >&2; exit 1; }
+plugin_dir="$(find "$ROOTFS/usr/lib/rabbitmq" -type d -name plugins -print -quit)"
+[[ -n "$plugin_dir" ]] || { echo 'RabbitMQ plugins directory is missing from rootfs' >&2; exit 1; }
+plugin_tmp="$(mktemp)"
+trap 'rm -f "$plugin_tmp"; cleanup_failed_build' EXIT
+curl -fsSL "$DELAYED_PLUGIN_URL" -o "$plugin_tmp"
+printf '%s  %s\n' "$DELAYED_PLUGIN_SHA256" "$plugin_tmp" | sha256sum --check --status \
+  || { echo "Delayed-message plugin checksum mismatch: $DELAYED_PLUGIN_FILE" >&2; exit 1; }
+install -m 0644 "$plugin_tmp" "$plugin_dir/$DELAYED_PLUGIN_FILE"
+rm -f "$plugin_tmp"
+[[ -f "$plugin_dir/$DELAYED_PLUGIN_FILE" ]] \
+  || { echo "Failed to install delayed-message plugin: $DELAYED_PLUGIN_FILE" >&2; exit 1; }
 cat > "$ROOTFS/etc/chroot-rabbitmq-build.env" <<EOF
 RABBITMQ_PACKAGE_VERSION=$actual
 RABBITMQ_UPSTREAM_VERSION=$RABBITMQ_UPSTREAM_VERSION
+DELAYED_PLUGIN_VERSION=$DELAYED_PLUGIN_VERSION
+DELAYED_PLUGIN_FILE=$DELAYED_PLUGIN_FILE
 EOF
 if [[ -f "$ROOTFS/etc/rabbitmq/rabbitmq.conf" ]]; then
   install -D -m 0644 "$ROOTFS/etc/rabbitmq/rabbitmq.conf" "$ROOTFS/usr/share/rabbitmq/rabbitmq.conf.reference"
@@ -75,3 +96,5 @@ fi
   || { echo 'failed to install rabbitmq.conf.reference' >&2; exit 1; }
 install -d -m 0755 "$ROOTFS/etc/rabbitmq" "$ROOTFS/var/lib/rabbitmq" "$ROOTFS/var/log/rabbitmq"
 echo "rootfs ready: $ROOTFS"
+BUILD_SUCCEEDED=true
+trap - EXIT

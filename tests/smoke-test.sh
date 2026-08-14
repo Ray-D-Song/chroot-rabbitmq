@@ -56,6 +56,42 @@ queue_smoke_test() {
   grep -F 'ok' <<<"$payload" || { echo "queue get missing payload: $payload" >&2; exit 1; }
 }
 
+delayed_message_smoke_test() {
+  local mgmt_base="http://127.0.0.1:${RABBITMQ_MGMT_PORT}/api"
+  local exchange='ci_delayed_exchange' queue='ci_delayed_queue' payload i
+  mgmt_api -X PUT "${mgmt_base}/queues/%2F/${queue}" \
+    -H 'content-type: application/json' \
+    -d '{"durable":true,"auto_delete":false,"arguments":{}}'
+  mgmt_api -X PUT "${mgmt_base}/exchanges/%2F/${exchange}" \
+    -H 'content-type: application/json' \
+    -d '{"type":"x-delayed-message","durable":true,"auto_delete":false,"internal":false,"arguments":{"x-delayed-type":"direct"}}'
+  mgmt_api -X POST "${mgmt_base}/bindings/%2F/e/${exchange}/q/${queue}" \
+    -H 'content-type: application/json' \
+    -d '{"routing_key":"delayed","arguments":{}}'
+  mgmt_api -X POST "${mgmt_base}/exchanges/%2F/${exchange}/publish" \
+    -H 'content-type: application/json' \
+    -d '{"properties":{"headers":{"x-delay":3000}},"routing_key":"delayed","payload":"delayed-ok","payload_encoding":"string"}'
+  payload="$(mgmt_api -X POST "${mgmt_base}/queues/%2F/${queue}/get" \
+    -H 'content-type: application/json' \
+    -d '{"count":1,"ackmode":"ack_requeue_false","encoding":"auto"}')"
+  [[ "$payload" == '[]' ]] || { echo "delayed message arrived too early: $payload" >&2; exit 1; }
+  sleep 1
+  payload="$(mgmt_api -X POST "${mgmt_base}/queues/%2F/${queue}/get" \
+    -H 'content-type: application/json' \
+    -d '{"count":1,"ackmode":"ack_requeue_false","encoding":"auto"}')"
+  [[ "$payload" == '[]' ]] || { echo "delayed message arrived before delay elapsed: $payload" >&2; exit 1; }
+  for i in $(seq 1 8); do
+    sleep 1
+    payload="$(mgmt_api -X POST "${mgmt_base}/queues/%2F/${queue}/get" \
+      -H 'content-type: application/json' \
+      -d '{"count":1,"ackmode":"ack_requeue_false","encoding":"auto"}')"
+    if grep -Fq 'delayed-ok' <<<"$payload"; then return 0; fi
+    [[ "$payload" == '[]' ]] || { echo "unexpected delayed-message payload: $payload" >&2; exit 1; }
+  done
+  echo 'delayed message was not delivered within 10 seconds' >&2
+  return 1
+}
+
 mount_rabbitmq_paths() {
   local prefix="$1" data_dir="$2" conf_dir="$3" log_dir="$4"
   mkdir -p "$prefix/rootfs/var/lib/rabbitmq" "$prefix/rootfs/etc/rabbitmq" "$prefix/rootfs/var/log/rabbitmq" "$prefix/rootfs/proc"
@@ -111,6 +147,7 @@ queue_smoke_test
 systemctl restart "$SERVICE"
 wait_for_rabbitmq "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR"
 queue_smoke_test
+delayed_message_smoke_test
 
 "$PACKAGE_DIR/uninstall.sh" --prefix "$PREFIX" --data-dir "$DATA_DIR" --conf-dir "$CONF_DIR" \
   --log-dir "$LOG_DIR" --service-name "$SERVICE" --credentials-file "$CREDENTIALS"
