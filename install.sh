@@ -120,13 +120,8 @@ rabbitmqctl_chroot() {
     /usr/sbin/rabbitmqctl -n "$NODENAME" "$@"
 }
 
-wait_for_rabbitmq_ping() {
-  for _ in $(seq 1 60); do
-    if rabbitmqctl_chroot ping >/dev/null 2>&1; then return 0; fi
-    sleep 1
-  done
-  echo "RabbitMQ did not become ready (node $NODENAME)" >&2
-  return 1
+wait_for_rabbitmq_ready() {
+  rabbitmqctl_chroot await_startup --timeout 60
 }
 
 if systemctl is-active --quiet "$SERVICE_NAME"; then systemctl stop "$SERVICE_NAME"; fi
@@ -218,7 +213,7 @@ if [[ "$needs_bootstrap" == true ]]; then
   mount --bind "$LOG_DIR" "$PREFIX/rootfs/var/log/rabbitmq"
   trap cleanup_mounts EXIT
   chroot "$PREFIX/rootfs" env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C /usr/sbin/rabbitmq-server -detached
-  wait_for_rabbitmq_ping
+  wait_for_rabbitmq_ready
   rabbitmqctl_chroot add_user "$RABBITMQ_USER" "$password"
   rabbitmqctl_chroot set_permissions -p / "$RABBITMQ_USER" ".*" ".*" ".*"
   rabbitmqctl_chroot set_user_tags "$RABBITMQ_USER" administrator
