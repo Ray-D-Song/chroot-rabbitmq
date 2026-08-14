@@ -41,7 +41,9 @@ echo "http://127.0.0.1:${RABBITMQ_MGMT_PORT}/"
 
 主配置文件是 `/etc/chroot-rabbitmq/conf/rabbitmq.conf`，运行时被 bind mount 到 rootfs 的 `/etc/rabbitmq`。文件开头是 `# BEGIN chroot-rabbitmq managed settings` 到 `# END chroot-rabbitmq managed settings` 的托管区块，每次安装都会重写它。
 
-RabbitMQ 以**最后出现的指令**为准，所以自定义配置要写在托管区块**之后**才能覆盖默认值。环境变量文件 `/etc/chroot-rabbitmq/conf/rabbitmq-env.conf` 由安装脚本生成（含固定 `NODENAME=rabbit@127.0.0.1`），改完执行 `sudo systemctl restart chroot-rabbitmq` 生效。带注释的上游完整配置样例在 rootfs 里的 `/usr/share/rabbitmq/rabbitmq.conf.reference`。
+RabbitMQ 以**最后出现的指令**为准，所以自定义配置要写在托管区块**之后**才能覆盖默认值。环境变量文件 `/etc/chroot-rabbitmq/conf/rabbitmq-env.conf` 由安装脚本生成（含固定 `NODENAME=rabbit@localhost`），改完执行 `sudo systemctl restart chroot-rabbitmq` 生效。带注释的上游完整配置样例在 rootfs 里的 `/usr/share/rabbitmq/rabbitmq.conf.reference`。
+
+RabbitMQ 进程在 chroot 内以 `rabbitmq` 用户运行（Debian 包要求）；systemd 服务以 root 启动 wrapper，数据目录归属 rootfs 内的 `rabbitmq` uid/gid。
 
 可覆盖默认值：
 

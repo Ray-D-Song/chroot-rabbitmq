@@ -12,7 +12,7 @@ SERVICE="chroot-rabbitmq-test-$TEST_ID"
 PORT="$(( 20000 + RANDOM % 20000 ))"
 MGMT_PORT="$(( 20000 + RANDOM % 20000 ))"
 CREDENTIALS="/etc/chroot-rabbitmq-test-$TEST_ID/credentials"
-NODENAME=rabbit@127.0.0.1
+NODENAME=rabbit@localhost
 PACKAGE_DIR=''
 
 cleanup() {

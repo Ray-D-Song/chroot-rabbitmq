@@ -7,11 +7,10 @@ CONF_DIR=/etc/chroot-rabbitmq/conf
 LOG_DIR=/var/log/chroot-rabbitmq
 CREDENTIALS=/etc/chroot-rabbitmq/credentials
 SERVICE_NAME=chroot-rabbitmq
-RUN_USER=chroot-rabbitmq
 PORT=5672
 MGMT_PORT=15672
 BIND_ADDRESS=127.0.0.1
-NODENAME=rabbit@127.0.0.1
+NODENAME=rabbit@localhost
 RABBITMQ_USER=admin
 PASSWORD_CLI=''
 
@@ -110,23 +109,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_ROOTFS="$SCRIPT_DIR/rootfs"
 [[ -x "$SOURCE_ROOTFS/usr/sbin/rabbitmq-server" ]] || { echo "rootfs is missing from $SOURCE_ROOTFS" >&2; exit 1; }
 
-if ! id "$RUN_USER" >/dev/null 2>&1; then
-  useradd --system --home-dir /nonexistent --shell /usr/sbin/nologin "$RUN_USER"
-fi
-RUN_UID="$(id -u "$RUN_USER")"
-RUN_GID="$(id -g "$RUN_USER")"
-
-ensure_chroot_identity() {
-  local rootfs="$1"
-  if ! awk -F: -v gid="$RUN_GID" '$3 == gid { found=1 } END { exit !found }' "$rootfs/etc/group"; then
-    printf '%s:x:%s:\n' "$RUN_USER" "$RUN_GID" >> "$rootfs/etc/group"
-  fi
-  if ! awk -F: -v uid="$RUN_UID" '$3 == uid { found=1 } END { exit !found }' "$rootfs/etc/passwd"; then
-    printf '%s:x:%s:%s:chroot-rabbitmq runtime:/nonexistent:/usr/sbin/nologin\n' \
-      "$RUN_USER" "$RUN_UID" "$RUN_GID" >> "$rootfs/etc/passwd"
-  fi
-}
-
 cleanup_mounts() {
   umount "$PREFIX/rootfs/var/log/rabbitmq" 2>/dev/null || true
   umount "$PREFIX/rootfs/etc/rabbitmq" 2>/dev/null || true
@@ -134,8 +116,8 @@ cleanup_mounts() {
 }
 
 rabbitmqctl_chroot() {
-  chroot --userspec="$RUN_UID:$RUN_GID" "$PREFIX/rootfs" \
-    env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C /usr/sbin/rabbitmqctl -n "$NODENAME" "$@"
+  chroot "$PREFIX/rootfs" env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C \
+    /usr/sbin/rabbitmqctl -n "$NODENAME" "$@"
 }
 
 wait_for_rabbitmq_ping() {
@@ -148,10 +130,8 @@ wait_for_rabbitmq_ping() {
 }
 
 if systemctl is-active --quiet "$SERVICE_NAME"; then systemctl stop "$SERVICE_NAME"; fi
-mkdir -p "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR" "$(dirname "$CREDENTIALS")"
+mkdir -p "$PREFIX" "$(dirname "$CREDENTIALS")"
 chmod 0750 "$(dirname "$CREDENTIALS")"
-chown "$RUN_UID:$RUN_GID" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR"
-chmod 0750 "$DATA_DIR" "$CONF_DIR" "$LOG_DIR"
 
 new_rootfs="$PREFIX/rootfs.new"
 rm -rf "$new_rootfs"
@@ -159,7 +139,13 @@ cp -a "$SOURCE_ROOTFS" "$new_rootfs"
 if [[ -d "$PREFIX/rootfs" ]]; then rm -rf "$PREFIX/rootfs"; fi
 mv "$new_rootfs" "$PREFIX/rootfs"
 install -D -m 0755 "$SCRIPT_DIR/bin/chroot-rabbitmq-run" "$PREFIX/bin/chroot-rabbitmq-run"
-ensure_chroot_identity "$PREFIX/rootfs"
+
+RABBITMQ_UID="$(chroot "$PREFIX/rootfs" id -u rabbitmq)"
+RABBITMQ_GID="$(chroot "$PREFIX/rootfs" id -g rabbitmq)"
+
+mkdir -p "$DATA_DIR" "$CONF_DIR" "$LOG_DIR"
+chown "$RABBITMQ_UID:$RABBITMQ_GID" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR"
+chmod 0750 "$DATA_DIR" "$CONF_DIR" "$LOG_DIR"
 
 data_has_state=false
 if [[ -d "$DATA_DIR/mnesia" || -f "$DATA_DIR/.erlang.cookie" ]]; then data_has_state=true; fi
@@ -206,7 +192,7 @@ HINT
   fi
   cat "$tmp" > "$target"
   rm -f "$tmp"
-  chown "$RUN_UID:$RUN_GID" "$target"
+  chown "$RABBITMQ_UID:$RABBITMQ_GID" "$target"
   chmod 0600 "$target"
 }
 
@@ -221,18 +207,17 @@ NODENAME=$NODENAME
 MNESIA_BASE=/var/lib/rabbitmq/mnesia
 HOME=/var/lib/rabbitmq
 EOF
-chown "$RUN_UID:$RUN_GID" "$CONF_DIR/rabbitmq-env.conf"
+chown "$RABBITMQ_UID:$RABBITMQ_GID" "$CONF_DIR/rabbitmq-env.conf"
 chmod 0600 "$CONF_DIR/rabbitmq-env.conf"
 
 if [[ "$needs_bootstrap" == true ]]; then
-  install -d -o "$RUN_UID" -g "$RUN_GID" -m 0750 \
+  install -d -o "$RABBITMQ_UID" -g "$RABBITMQ_GID" -m 0750 \
     "$PREFIX/rootfs/var/lib/rabbitmq" "$PREFIX/rootfs/etc/rabbitmq" "$PREFIX/rootfs/var/log/rabbitmq"
   mount --bind "$DATA_DIR" "$PREFIX/rootfs/var/lib/rabbitmq"
   mount --bind "$CONF_DIR" "$PREFIX/rootfs/etc/rabbitmq"
   mount --bind "$LOG_DIR" "$PREFIX/rootfs/var/log/rabbitmq"
   trap cleanup_mounts EXIT
-  chroot --userspec="$RUN_UID:$RUN_GID" "$PREFIX/rootfs" \
-    env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C /usr/sbin/rabbitmq-server -detached
+  chroot "$PREFIX/rootfs" env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C /usr/sbin/rabbitmq-server -detached
   wait_for_rabbitmq_ping
   rabbitmqctl_chroot add_user "$RABBITMQ_USER" "$password"
   rabbitmqctl_chroot set_permissions -p / "$RABBITMQ_USER" ".*" ".*" ".*"
@@ -245,7 +230,6 @@ fi
 
 sed -e "s|@PREFIX@|$PREFIX|g" -e "s|@DATA_DIR@|$DATA_DIR|g" \
   -e "s|@CONF_DIR@|$CONF_DIR|g" -e "s|@LOG_DIR@|$LOG_DIR|g" \
-  -e "s|@RUN_UID@|$RUN_UID|g" -e "s|@RUN_GID@|$RUN_GID|g" \
   "$SCRIPT_DIR/systemd/chroot-rabbitmq.service.in" > "/etc/systemd/system/$SERVICE_NAME.service"
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME"
