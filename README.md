@@ -22,7 +22,7 @@ sudo cat /etc/chroot-rabbitmq/credentials
 
 默认路径为 `/opt/chroot-rabbitmq`（rootfs）、`/var/lib/chroot-rabbitmq/data`（数据）、`/etc/chroot-rabbitmq/conf`（配置）、`/var/log/chroot-rabbitmq`（日志）和 `/etc/chroot-rabbitmq/credentials`（凭据）；数据和配置目录不会随普通卸载或升级删除。
 
-默认监听 `127.0.0.1:5672`（AMQP）与 `15672`（Management），安装时创建 `admin` 用户并生成随机密码，或通过 `--password` / `CHROOT_RABBITMQ_PASSWORD` 指定。生产使用前若需对外暴露，请修改 `bind-address` 并通过防火墙限制来源地址。
+默认监听 `0.0.0.0:5672`（AMQP）与 `15672`（Management），安装时创建 `admin` 用户并生成随机密码，或通过 `--password` / `CHROOT_RABBITMQ_PASSWORD` 指定。生产使用前必须通过防火墙限制来源地址；如只需本机访问，可将 `bind-address` 改为 `127.0.0.1`。
 
 密码来源（仅全新实例）：`--password` > `CHROOT_RABBITMQ_PASSWORD` > 随机生成。已有数据目录时传入密码会被忽略并警告，密码以 credentials 文件为准。自动化场景优先使用环境变量：
 
