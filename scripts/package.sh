@@ -15,10 +15,10 @@ rm -rf "$STAGE"
 mkdir -p "$STAGE/systemd" "$STAGE/bin"
 cp -a "$ROOTFS" "$STAGE/rootfs"
 cp "$ROOT_DIR/install.sh" "$ROOT_DIR/uninstall.sh" "$ROOT_DIR/status.sh" "$STAGE/"
-cp "$ROOT_DIR/bin/chroot-rabbitmq-run" "$STAGE/bin/"
+cp "$ROOT_DIR/bin/chroot-rabbitmq-run" "$ROOT_DIR/bin/chroot-rabbitmq-hosts" "$STAGE/bin/"
 cp "$ROOT_DIR/systemd/chroot-rabbitmq.service.in" "$STAGE/systemd/"
 cp "$ROOT_DIR/README.md" "$STAGE/"
-chmod 0755 "$STAGE"/*.sh "$STAGE/bin/chroot-rabbitmq-run"
+chmod 0755 "$STAGE"/*.sh "$STAGE/bin/chroot-rabbitmq-run" "$STAGE/bin/chroot-rabbitmq-hosts"
 cat > "$STAGE/manifest.json" <<EOF
 {"bundle_version":"$VERSION","architecture":"amd64","rootfs":"debian-$DEBIAN_SUITE","rabbitmq_package_version":"$RABBITMQ_PACKAGE_VERSION","rabbitmq_upstream_version":"$RABBITMQ_UPSTREAM_VERSION","delayed_plugin_version":"$DELAYED_PLUGIN_VERSION","delayed_plugin_file":"$DELAYED_PLUGIN_FILE","delayed_plugin_sha256":"$DELAYED_PLUGIN_SHA256"}
 EOF

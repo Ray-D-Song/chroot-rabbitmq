@@ -36,6 +36,8 @@ jobs:
         run: |
           test -n '${{ inputs.tag }}'
           case '${{ inputs.tag }}' in v*) ;; *) echo 'manual release tag must start with v' >&2; exit 1;; esac
+      - name: Validate shell scripts
+        run: bash -n install.sh uninstall.sh status.sh bin/chroot-rabbitmq-hosts bin/chroot-rabbitmq-run scripts/build-rootfs.sh scripts/package.sh tests/verify-rootfs.sh tests/smoke-test.sh
       - name: Build rootfs
         run: sudo -E bash scripts/build-rootfs.sh
       - name: Verify rootfs
@@ -46,6 +48,7 @@ jobs:
         run: |
           (cd dist && sha256sum --check SHA256SUMS)
           tar -tzf dist/chroot-rabbitmq-*-linux-amd64.tar.gz | grep -E '/rootfs/usr/sbin/rabbitmq-server$'
+          tar -tzf dist/chroot-rabbitmq-*-linux-amd64.tar.gz | grep -E '/bin/chroot-rabbitmq-hosts$'
       - uses: actions/upload-artifact@v4
         with:
           name: chroot-rabbitmq-release

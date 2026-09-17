@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOTFS="${1:?usage: chroot-rabbitmq-hosts <rootfs>}"
+HOSTS="$ROOTFS/etc/hosts"
+
+[[ $EUID -eq 0 ]] || { echo 'chroot-rabbitmq-hosts must be run by root' >&2; exit 1; }
+[[ -d "$ROOTFS/etc" ]] || { echo "rootfs is missing /etc: $ROOTFS" >&2; exit 1; }
+
+HOSTNAME_SHORT="$(hostname -s 2>/dev/null || true)"
+[[ "$HOSTNAME_SHORT" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] \
+  || { echo "宿主短主机名无效，无法写入 rootfs hosts: $HOSTNAME_SHORT" >&2; exit 1; }
+
+tmp="$(mktemp "$ROOTFS/etc/hosts.XXXXXX")"
+cleanup() { rm -f "$tmp"; }
+trap cleanup EXIT
+printf '127.0.0.1 localhost %s\n::1 localhost ip6-localhost ip6-loopback\n' "$HOSTNAME_SHORT" > "$tmp"
+chmod 0644 "$tmp"
+mv -f "$tmp" "$HOSTS"
+trap - EXIT

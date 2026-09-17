@@ -13,6 +13,7 @@ BIND_ADDRESS=0.0.0.0
 NODENAME=rabbit@localhost
 RABBITMQ_USER=admin
 PASSWORD_CLI=''
+CTL_TIMEOUT=5
 
 usage() {
   cat <<EOF
@@ -104,6 +105,8 @@ done
 [[ "$CONF_DIR" == /* && "$CONF_DIR" != / ]] || { echo 'conf-dir must be a non-root absolute path' >&2; exit 2; }
 [[ "$LOG_DIR" == /* && "$LOG_DIR" != / ]] || { echo 'log-dir must be a non-root absolute path' >&2; exit 2; }
 [[ "$CREDENTIALS" == /* && "$CREDENTIALS" != / ]] || { echo 'credentials-file must be a non-root absolute path' >&2; exit 2; }
+TIMEOUT_BIN="$(command -v timeout || true)"
+[[ -n "$TIMEOUT_BIN" ]] || { echo 'GNU coreutils timeout is required' >&2; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SOURCE_ROOTFS="$SCRIPT_DIR/rootfs"
@@ -117,13 +120,25 @@ cleanup_mounts() {
 }
 
 rabbitmqctl_chroot() {
-  chroot "$PREFIX/rootfs" env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C \
+  "$TIMEOUT_BIN" --foreground "${CTL_TIMEOUT}s" chroot "$PREFIX/rootfs" env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C \
     /usr/sbin/rabbitmqctl -n "$NODENAME" "$@"
 }
 
+startup_diagnostics() {
+  local hostname_short
+  hostname_short="$(hostname -s 2>/dev/null || echo unknown)"
+  echo "RabbitMQ startup diagnostics: node=$NODENAME hostname=$hostname_short ports=$PORT/$MGMT_PORT log-dir=$LOG_DIR" >&2
+  if [[ -x "$PREFIX/rootfs/usr/bin/getent" ]]; then
+    chroot "$PREFIX/rootfs" /usr/bin/getent hosts "$hostname_short" >&2 || true
+  fi
+  if [[ -d "$LOG_DIR" ]]; then
+    find "$LOG_DIR" -maxdepth 1 -type f -printf 'log: %p (%s bytes)\n' >&2 2>/dev/null || true
+  fi
+}
+
 wait_for_rabbitmq_ready() {
-  local i
-  for i in $(seq 1 60); do
+  local deadline=$((SECONDS + 60))
+  while (( SECONDS < deadline )); do
     if rabbitmqctl_chroot ping >/dev/null 2>&1; then
       if rabbitmqctl_chroot await_startup --timeout 1 >/dev/null 2>&1; then
         return 0
@@ -132,6 +147,7 @@ wait_for_rabbitmq_ready() {
     sleep 1
   done
   echo "RabbitMQ did not become ready (node $NODENAME)" >&2
+  startup_diagnostics
   return 1
 }
 
@@ -145,12 +161,9 @@ rm -rf "$new_rootfs"
 cp -a "$SOURCE_ROOTFS" "$new_rootfs"
 if [[ -d "$PREFIX/rootfs" ]]; then rm -rf "$PREFIX/rootfs"; fi
 mv "$new_rootfs" "$PREFIX/rootfs"
-cat > "$PREFIX/rootfs/etc/hosts" <<'EOF'
-127.0.0.1 localhost
-::1 localhost
-EOF
-chmod 0644 "$PREFIX/rootfs/etc/hosts"
+"$SCRIPT_DIR/bin/chroot-rabbitmq-hosts" "$PREFIX/rootfs"
 install -D -m 0755 "$SCRIPT_DIR/bin/chroot-rabbitmq-run" "$PREFIX/bin/chroot-rabbitmq-run"
+install -D -m 0755 "$SCRIPT_DIR/bin/chroot-rabbitmq-hosts" "$PREFIX/bin/chroot-rabbitmq-hosts"
 
 RABBITMQ_UID="$(chroot "$PREFIX/rootfs" id -u rabbitmq)"
 RABBITMQ_GID="$(chroot "$PREFIX/rootfs" id -g rabbitmq)"

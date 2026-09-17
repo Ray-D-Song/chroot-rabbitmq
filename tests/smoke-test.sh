@@ -13,6 +13,8 @@ PORT="$(( 20000 + RANDOM % 20000 ))"
 MGMT_PORT="$(( 20000 + RANDOM % 20000 ))"
 CREDENTIALS="/etc/chroot-rabbitmq-test-$TEST_ID/credentials"
 NODENAME=rabbit@localhost
+CTL_TIMEOUT=5s
+HOSTNAME_SHORT="$(hostname -s)"
 PACKAGE_DIR=''
 
 cleanup() {
@@ -24,7 +26,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
+assert_hostname_mapping() {
+  local prefix="$1"
+  grep -Fqx "127.0.0.1 localhost $HOSTNAME_SHORT" "$prefix/rootfs/etc/hosts" \
+    || { echo "rootfs hosts is missing loopback mapping for $HOSTNAME_SHORT" >&2; exit 1; }
+  timeout --foreground "$CTL_TIMEOUT" chroot "$prefix/rootfs" getent ahostsv4 "$HOSTNAME_SHORT" \
+    | awk '$1 == "127.0.0.1" { found = 1 } END { exit !found }'
+}
+
 [[ $EUID -eq 0 ]] || { echo 'smoke test requires root' >&2; exit 1; }
+command -v timeout >/dev/null || { echo 'GNU coreutils timeout is required' >&2; exit 1; }
 tar -xzf "$BUNDLE" -C "$WORK_DIR"
 PACKAGE_DIR="$(find "$WORK_DIR" -mindepth 1 -maxdepth 1 -type d -print -quit)"
 [[ -n "$PACKAGE_DIR" ]] || { echo 'bundle root directory missing' >&2; exit 1; }
@@ -32,6 +43,7 @@ PACKAGE_DIR="$(find "$WORK_DIR" -mindepth 1 -maxdepth 1 -type d -print -quit)"
   --log-dir "$LOG_DIR" --service-name "$SERVICE" --credentials-file "$CREDENTIALS" \
   --port "$PORT" --mgmt-port "$MGMT_PORT" --bind-address 127.0.0.1
 systemctl is-active --quiet "$SERVICE"
+assert_hostname_mapping "$PREFIX"
 [[ "$(grep -c '^# BEGIN chroot-rabbitmq managed settings$' "$CONF_DIR/rabbitmq.conf")" == 1 ]] \
   || { echo 'managed block is missing or duplicated' >&2; exit 1; }
 
@@ -113,19 +125,20 @@ rabbitmqctl_exec() {
   local prefix="$1" data_dir="$2" conf_dir="$3" log_dir="$4" rc=0
   shift 4
   mount_rabbitmq_paths "$prefix" "$data_dir" "$conf_dir" "$log_dir"
-  chroot "$prefix/rootfs" env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C \
+  timeout --foreground "$CTL_TIMEOUT" chroot "$prefix/rootfs" env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C \
     /usr/sbin/rabbitmqctl -n "$NODENAME" "$@" || rc=$?
   umount_rabbitmq_paths "$prefix"
   return "$rc"
 }
 
 wait_for_rabbitmq() {
-  local prefix="$1" data_dir="$2" conf_dir="$3" log_dir="$4" i
+  local prefix="$1" data_dir="$2" conf_dir="$3" log_dir="$4"
   mount_rabbitmq_paths "$prefix" "$data_dir" "$conf_dir" "$log_dir"
-  for i in $(seq 1 60); do
-    if chroot "$prefix/rootfs" env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C \
+  local deadline=$((SECONDS + 60))
+  while (( SECONDS < deadline )); do
+    if timeout --foreground "$CTL_TIMEOUT" chroot "$prefix/rootfs" env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C \
          /usr/sbin/rabbitmqctl -n "$NODENAME" ping >/dev/null 2>&1; then
-      if chroot "$prefix/rootfs" env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C \
+      if timeout --foreground "$CTL_TIMEOUT" chroot "$prefix/rootfs" env HOME=/var/lib/rabbitmq LANG=C LC_ALL=C \
            /usr/sbin/rabbitmqctl -n "$NODENAME" await_startup --timeout 1 >/dev/null 2>&1; then
         umount_rabbitmq_paths "$prefix"
         return 0
@@ -145,6 +158,7 @@ grep -Fx 'Success' <<<"$auth_out" || { echo "authenticate_user failed: $auth_out
 queue_smoke_test
 
 systemctl restart "$SERVICE"
+assert_hostname_mapping "$PREFIX"
 wait_for_rabbitmq "$PREFIX" "$DATA_DIR" "$CONF_DIR" "$LOG_DIR"
 queue_smoke_test
 delayed_message_smoke_test
@@ -187,6 +201,7 @@ CHROOT_RABBITMQ_PASSWORD="$CUSTOM_PASSWORD" "$PACKAGE_DIR/install.sh" \
   --credentials-file "$CUSTOM_CREDENTIALS" --port "$CUSTOM_PORT" --mgmt-port "$CUSTOM_MGMT_PORT" \
   --bind-address 127.0.0.1
 systemctl is-active --quiet "$CUSTOM_SERVICE"
+assert_hostname_mapping "$CUSTOM_PREFIX"
 source "$CUSTOM_CREDENTIALS"
 [[ "$RABBITMQ_PASSWORD" == "$CUSTOM_PASSWORD" ]] || { echo 'custom password was not stored in credentials' >&2; exit 1; }
 wait_for_rabbitmq "$CUSTOM_PREFIX" "$CUSTOM_DATA_DIR" "$CUSTOM_CONF_DIR" "$CUSTOM_LOG_DIR"
@@ -202,6 +217,7 @@ reinstall_output="$(CHROOT_RABBITMQ_PASSWORD="$OTHER_PASSWORD" "$PACKAGE_DIR/ins
   --bind-address 127.0.0.1 --password "$OTHER_PASSWORD" 2>&1)"
 grep -q 'ignored' <<<"$reinstall_output" || { echo 'reinstall did not warn about ignored password' >&2; exit 1; }
 systemctl is-active --quiet "$CUSTOM_SERVICE"
+assert_hostname_mapping "$CUSTOM_PREFIX"
 source "$CUSTOM_CREDENTIALS"
 [[ "$RABBITMQ_PASSWORD" == "$CUSTOM_PASSWORD" ]] || { echo 'reinstall changed the stored password' >&2; exit 1; }
 wait_for_rabbitmq "$CUSTOM_PREFIX" "$CUSTOM_DATA_DIR" "$CUSTOM_CONF_DIR" "$CUSTOM_LOG_DIR"
